@@ -1,0 +1,209 @@
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+
+type RewardStatus = 'available' | 'pending' | 'claimed';
+
+type Reward = {
+  id: string;
+  title: string;
+  description: string;
+  points: number;
+  status: RewardStatus;
+  createdAt: string;
+};
+
+const currency = new Intl.NumberFormat('en-US');
+
+const defaultRewards: Reward[] = [
+  {
+    id: 'r-101',
+    title: 'Spring Launch Bonus',
+    description: 'Earned for completing the Q2 launch checklist.',
+    points: 250,
+    status: 'available',
+    createdAt: '2026-09-02T09:00:00.000Z',
+  },
+  {
+    id: 'r-102',
+    title: 'Referral Milestone',
+    description: 'Rewards for bringing in three new active users.',
+    points: 180,
+    status: 'pending',
+    createdAt: '2026-09-16T10:15:00.000Z',
+  },
+  {
+    id: 'r-103',
+    title: 'Cloud Credit Rebate',
+    description: 'Automated rebate for spending over the monthly tier.',
+    points: 450,
+    status: 'claimed',
+    createdAt: '2026-09-21T13:05:00.000Z',
+  },
+];
+
+function App() {
+  const [rewards, setRewards] = useState<Reward[]>(defaultRewards);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ title: '', description: '', points: '100' });
+
+  useEffect(() => {
+    const loadRewards = async () => {
+      try {
+        const response = await fetch('/api/rewards');
+        if (!response.ok) {
+          throw new Error('Failed to load rewards');
+        }
+
+        const data = (await response.json()) as Reward[];
+        if (data.length > 0) {
+          setRewards(data);
+        }
+      } catch (error) {
+        console.warn('Using fallback reward data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadRewards();
+  }, []);
+
+  const totals = useMemo(() => {
+    const totalPoints = rewards.reduce((sum, reward) => sum + reward.points, 0);
+    const active = rewards.filter((reward) => reward.status === 'available').length;
+    const pending = rewards.filter((reward) => reward.status === 'pending').length;
+
+    return { totalPoints, active, pending };
+  }, [rewards]);
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+
+    const payload = {
+      title: form.title.trim(),
+      description: form.description.trim() || 'New reward request created from the dashboard.',
+      points: Number(form.points) || 100,
+      status: 'pending' as RewardStatus,
+    };
+
+    if (!payload.title) {
+      return;
+    }
+
+    const response = await fetch('/api/rewards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      return;
+    }
+
+    const createdReward = (await response.json()) as Reward;
+    setRewards((current) => [createdReward, ...current]);
+    setForm({ title: '', description: '', points: '100' });
+  };
+
+  return (
+    <div className="page-shell">
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">HubEarn</p>
+          <h1>Rewards dashboard</h1>
+        </div>
+        <button className="primary-button" type="button">
+          Export report
+        </button>
+      </header>
+
+      <section className="stats-grid">
+        <article className="stat-card">
+          <span>Total points</span>
+          <strong>{currency.format(totals.totalPoints)}</strong>
+        </article>
+        <article className="stat-card">
+          <span>Ready to claim</span>
+          <strong>{totals.active}</strong>
+        </article>
+        <article className="stat-card">
+          <span>Pending review</span>
+          <strong>{totals.pending}</strong>
+        </article>
+      </section>
+
+      <section className="content-grid">
+        <div className="panel">
+          <div className="panel-header">
+            <h2>Add reward</h2>
+          </div>
+
+          <form className="reward-form" onSubmit={handleSubmit}>
+            <label>
+              Reward name
+              <input
+                type="text"
+                value={form.title}
+                onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+                placeholder="Team recognition"
+              />
+            </label>
+
+            <label>
+              Description
+              <textarea
+                rows={4}
+                value={form.description}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, description: event.target.value }))
+                }
+                placeholder="Describe the reward reason"
+              />
+            </label>
+
+            <label>
+              Points
+              <input
+                type="number"
+                min={10}
+                step={10}
+                value={form.points}
+                onChange={(event) => setForm((current) => ({ ...current, points: event.target.value }))}
+              />
+            </label>
+
+            <button className="primary-button" type="submit">
+              Create reward
+            </button>
+          </form>
+        </div>
+
+        <div className="panel">
+          <div className="panel-header">
+            <h2>Recent rewards</h2>
+          </div>
+
+          <div className="reward-list">
+            {loading ? (
+              <p className="muted">Loading rewards…</p>
+            ) : (
+              rewards.map((reward) => (
+                <article key={reward.id} className="reward-item">
+                  <div>
+                    <h3>{reward.title}</h3>
+                    <p>{reward.description}</p>
+                  </div>
+                  <div className="reward-meta">
+                    <span className={`badge badge-${reward.status}`}>{reward.status}</span>
+                    <strong>{currency.format(reward.points)} pts</strong>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export default App;
